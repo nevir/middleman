@@ -11,8 +11,6 @@ module Middleman
         app.define_hook :instance_available
         app.define_hook :after_configuration
         app.define_hook :before_configuration
-        app.define_hook :build_config
-        app.define_hook :development_config
 
         app.extend ClassMethods
         app.delegate :configure, to: :"self.class"
@@ -23,11 +21,11 @@ module Middleman
         #
         # @example
         #    # Only minify when building
-        #    configure :build do
+        #    configure :production do
         #      activate :minify_javascript
         #    end
         #
-        # @param [String, Symbol] env The environment to run in (:build, :development)
+        # @param [String, Symbol] env The environment to run in
         # @return [void]
         def configure(env, &block)
           send("#{env}_config", &block)
@@ -77,18 +75,19 @@ module Middleman
 
       # Override application initialization to load `config.rb` and to call lifecycle hooks.
       def initialize(&block)
-        super
-
         self.class.inst = self
 
         # Search the root of the project for required files
         $LOAD_PATH.unshift(root) unless $LOAD_PATH.include?(root)
 
+        # Evaluate a passed block if given
+        config_context.instance_exec(&block) if block_given?
+
+        super
+
         ::Middleman::Extension.clear_after_extension_callbacks
 
-        ::Middleman::Extensions.auto_activate[:before_configuration].each do |ext_name|
-          activate ext_name
-        end
+        ::Middleman::Extensions.auto_activate(:before_configuration, self)
 
         if ENV['AUTOLOAD_SPROCKETS'] != 'false'
           begin
@@ -99,9 +98,6 @@ module Middleman
           end
         end
 
-        # Evaluate a passed block if given
-        config_context.instance_exec(&block) if block_given?
-
         run_hook :initialized
 
         run_hook :before_configuration
@@ -109,19 +105,17 @@ module Middleman
         # Check for and evaluate local configuration in `config.rb`
         local_config = File.join(root, 'config.rb')
         if File.exist? local_config
-          logger.debug '== Reading:  Local config'
+          logger.debug '== Reading: Local config'
           config_context.instance_eval File.read(local_config), local_config, 1
         end
 
-        if build?
-          run_hook :build_config
-          config_context.execute_configure_callbacks(:build)
+        env_config = File.join(root, 'environments', "#{config[:environment]}.rb")
+        if File.exist? env_config
+          logger.debug "== Reading: #{config[:environment]} config"
+          config_context.instance_eval File.read(env_config), env_config, 1
         end
 
-        if development?
-          run_hook :development_config
-          config_context.execute_configure_callbacks(:development)
-        end
+        config_context.execute_configure_callbacks(config[:environment])
 
         run_hook :instance_available
 

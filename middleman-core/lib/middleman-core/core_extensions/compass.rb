@@ -15,6 +15,10 @@ class Middleman::CoreExtensions::Compass < ::Middleman::Extension
     app.config.define_setting :sass_assets_paths, [], 'Paths to extra SASS/SCSS files'
   end
 
+  def before_configuration
+    app.add_to_config_context :compass_config, &app.method(:compass_config)
+  end
+
   def after_configuration
     ::Compass.configuration do |compass_config|
       compass_config.project_path    = app.source_dir
